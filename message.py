@@ -1,4 +1,5 @@
 import struct
+import math
 from bidict import bidict
 
 
@@ -73,37 +74,115 @@ class MessageBase(object):
 	def get_byte_length(self):
 		return struct.calcsize(self.schema['byteformat'])
 
-message_types = {}
 
-
-def MessageFactory(schema, explicit_create=False):
+class MessageFactory(object):
 	"""
 	Factory generates message classes based on a schema provided
 	It also keeps track of message ids using message_types
 	and will not allow duplicates
 	"""
-	def new_class_init(self, *args, **kwargs):
-		if(args):
-			self.hydrate(args[0])
 
-	if(schema['id'] in message_types.keys() and explicit_create):
-		raise Exception("Message type already registered with id {} and explicit_create set to True".format(schema['id']))
+	@classmethod
+	def _get_binary_format_symbol(cls, number):
+		bytes_needed = math.ceil(math.log(number, 2) / 8)
+		if(bytes_needed <= 1):
+			binary_format = 'B'
+		elif(bytes_needed == 2):
+			binary_format = 'H'
+		elif(bytes_needed <= 4):
+			binary_format = 'I'
+		elif(bytes_needed <= 8):
+			binary_format = 'Q'
+		else:
+			raise Exception("Unable to represent number {} in packed structure".format(number))
 
-	if(schema['id'] in message_types.keys()):
-		return message_types[schema['id']]
+		return binary_format
 
-	newclass = type(schema['name'], (MessageBase,), {
-		'__init__': new_class_init
-	})
+	msg_classes_by_name = {}
+	msg_classes_by_id = {}
+	binary_types = {
+		'bool': '?',
+		'byte': 'b',
+		'ubyte': 'B',
+		'char': 'c',
+		'short': 'h',
+		'ushort': 'H',
+		'int': 'i',
+		'uint': 'I',
+		'int64': 'q',
+		'uint64': 'Q',
+	}
 
-	if('enums' in schema):
-		for key in schema['enums'].keys():
-			newclass.enums[key] = bidict(schema['enums'][key])
+	def get_binary_format(self, msg_schema):
+		fields = msg_schema['format'].keys()
+		fields.sort()
+		binary_format = '!'  # we always use network (big-endian) byte order
+		binary_format += self.id_binary_format
 
-	newclass.schema = schema
+		for field in fields:
+			if(msg_schema['format'][field] == 'string'):
+				binary_format += 'I{}s'
+			elif(msg_schema['format'][field] == 'enum'):
+				try:
+					binary_format += self.__class__._get_binary_format_symbol(len(msg_schema['format'][field]))
+				except Exception:
+					raise Exception("Enum field can contain the maximum number of 2^64 - 1 possible values.")
+			else:
+				try:
+					binary_format += self.binary_types[msg_schema['format'][field]]
+				except KeyError:
+					raise Exception("Unknown field type {}".format(msg_schema['format'][field]))
 
-	message_types[schema['id']] = newclass
-	return newclass
+		return binary_format
+
+	def get(self, id_or_name):
+		if(type(id_or_name) == int):
+			return self.get_by_id(id_or_name)
+		else:
+			return self.get_by_name(id_or_name)
+
+	def get_by_name(self, name):
+		try:
+			return self.msg_classes_by_name[name]
+		except KeyError:
+			raise Exception("No message by the name of {} found in the schema".format(name))
+
+	def get_by_id(self, id):
+		try:
+			return self.msg_classes_by_id[id]
+		except KeyError:
+			raise Exception("No message identified by {} found in the schema".format(name))
+
+	def __init__(self, schema):
+		def new_class_init(self, *args, **kwargs):
+			if(args):
+				self.hydrate(args[0])
+
+		keys = schema.keys()
+		keys.sort()
+		next_id = 0
+
+		try:
+			self.id_binary_format = self.__class__._get_binary_format_symbol(len(schema))
+		except Exception:
+			raise Exception('Schema can contain the maximum number of 2^64 - 1 message types.')
+
+		for msg_class_name in keys:
+			newclass = type(msg_class_name, (MessageBase,), {
+				'__init__': new_class_init
+			})
+
+			if('enums' in schema[msg_class_name]):
+				for key in schema[msg_class_name]['enums'].keys():
+					newclass.enums[key] = bidict(schema[msg_class_name]['enums'][key])
+
+			newclass.binary_format = self.get_binary_format(schema[msg_class_name])
+			newclass.schema = schema
+			newclass.msg_id = next_id
+
+			self.msg_classes_by_name[msg_class_name] = newclass
+			self.msg_classes_by_id[next_id] = newclass
+			next_id += 1
 
 
 def pack_messages(messages):
@@ -115,23 +194,23 @@ def pack_messages(messages):
 	if(len(messages) == 0):
 		return ''
 
-	buffer_ = struct.pack('B', messages[0].schema['id'])
+	buffer_ = struct.pack(messages[0].binaryformat[1], messages[0].msg_id)
 	for message in messages:
 		if(message and hasattr(message, 'pack')):
 			buffer_ += message.pack()
 	return buffer_
 
 
-def unpack_mesages(data, message_types=message_types):
+def unpack_mesages(data, factory):
 	"""
 	Unpacks any number of messages of the same kind
 	from binary string into object instances.
 	"""
 	buffer_ = buffer(data)
 	messages = list()
-	message_cls = message_types[struct.unpack('B', buffer_[0])[0]]
-	message_count = (len(buffer_) - 1) / message_cls.get_byte_length()
-	for i in range(message_count):
-		msg_buffer = buffer_[1 + i * message_cls.get_byte_length():1 + (i + 1) * message_cls.get_byte_length()]
-		messages.append(message_cls.from_packed(msg_buffer))
+	message_cls = factory.get_by_id([struct.unpack(self.id_binary_format, buffer_[0])[0]])
+	# message_count = (len(buffer_) - 1) / message_cls.get_byte_length()
+	# for i in range(message_count):
+	# 	msg_buffer = buffer_[1 + i * message_cls.get_byte_length():1 + (i + 1) * message_cls.get_byte_length()]
+	# 	messages.append(message_cls.from_packed(msg_buffer))
 	return messages
