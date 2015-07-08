@@ -40,13 +40,14 @@ class MessageBase(dict):
 	# def __getitem__(self, key, value):
 	# 	return self._data[key]
 
-	def dehydrate(self):
+	def pack(self):
+		binary_format = self.__class__.binary_format
 		format_ = self.__class__.format
 		keys = format_.keys()
 		keys.sort()
 
 		# start off with an id
-		dehydrated = [self.__class__.id, ]
+		data = [self.__class__.id, ]
 		# if we encounter any strings, log the length of each one
 		str_lengths = []
 		for key in keys:
@@ -57,17 +58,13 @@ class MessageBase(dict):
 				if(type(value) == unicode):
 					value = value.encode('utf-8')
 				value = str(value)
-				dehydrated.append(len(value))
+				data.append(len(value))
 				str_lengths.append(len(value))
-			dehydrated.append(value)
-		return (dehydrated, str_lengths)
+			data.append(value)
 
-	def pack(self):
-		binary_format = self.__class__.binary_format
-		(dehydrated, str_lengths) = self.dehydrate()
 		if(len(str_lengths)):
 			binary_format = binary_format.format(*str_lengths)
-		buffer_ = struct.pack(binary_format, *dehydrated)
+		buffer_ = struct.pack(binary_format, *data)
 		return buffer_
 
 	@classmethod
@@ -93,18 +90,8 @@ class MessageBase(dict):
 			raise Exception("No identifier found for value {} in enum {}".format(value, enum_name))
 
 	@classmethod
-	def from_packed(cls, data):
-		item = cls()
-		# if('string' in cls.format.values()):
-		# 	for idx, key in enumerate(item.schema['format']):
-		buffer_ = buffer(data)
-		item = struct.unpack_from(cls.byte_format, buffer_)
-		item = list(item)
-		return cls.from_dehydrated(item)
-
-	@classmethod
 	def get_byte_length(self):
-		return struct.calcsize(self.byte_format)
+		return struct.calcsize(self.binary_format)
 
 
 class MessageFactory(object):
@@ -143,6 +130,8 @@ class MessageFactory(object):
 		'uint': 'I',
 		'int64': 'q',
 		'uint64': 'Q',
+		'float': 'f',
+		'double': 'd'
 	}
 
 	def get_binary_format(self, msg_schema):
@@ -183,7 +172,7 @@ class MessageFactory(object):
 		try:
 			return self.msg_classes_by_id[id]
 		except KeyError:
-			raise Exception("No message identified by {} found in the schema".format(name))
+			raise Exception("No message identified by {} found in the schema".format(id))
 
 	def __init__(self, schema):
 		def new_class_init(self, *args, **kwargs):
@@ -193,6 +182,7 @@ class MessageFactory(object):
 		keys = schema.keys()
 		keys.sort()
 		next_id = 1
+		self.bytes_needed_for_id = int(math.ceil(math.log(len(schema), 2) / 8))
 
 		try:
 			self.id_binary_format = self.__class__._get_binary_format_symbol(len(schema))
@@ -232,6 +222,29 @@ def pack_messages(messages):
 		if(message and hasattr(message, 'pack')):
 			buffer_ += message.pack()
 	return buffer_
+
+
+def unpack_message(data, factory):
+	buffer_ = buffer(data)
+	(msg_id, ) = struct.unpack_from('!{}'.format(factory.id_binary_format), buffer_[0:factory.bytes_needed_for_id])
+	cls = factory.get_by_id(msg_id)
+	item = cls()
+
+	keys = cls.format.keys()
+	keys.sort()
+	binary_format = cls.binary_format
+
+	# proces string msgs here
+	for idx, key in enumerate(keys):
+		if(cls.format[key] == 'string'):
+			import ipdb; ipdb.set_trace()
+
+	data = struct.unpack_from(binary_format, buffer_)[1:]
+
+	for idx, key in enumerate(keys):
+		item[key] = data[idx]
+
+	return item
 
 
 def unpack_mesages(data, factory):

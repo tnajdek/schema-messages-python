@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import unittest
 import struct
-from message import MessageFactory, pack_messages, unpack_mesages
+from message import MessageFactory, pack_messages, unpack_message, unpack_mesages
 
 
 class TestInterface(unittest.TestCase):
@@ -27,10 +27,16 @@ class TestInterface(unittest.TestCase):
 					'name': 'string',
 					'score': 'ushort',
 				}
+			},
+			'VectorMessage': {
+				'format': {
+					'x': 'float',
+					'y': 'float'
+				}
 			}
 		})
 
-	def get_foo_msg(self, x=1, y=3.33, direction='south'):
+	def get_foo_msg(self, x=1, y=3, direction='south'):
 		msg = self.factory.get('FooMessage')()
 		msg['x'] = x
 		msg['y'] = y
@@ -41,6 +47,12 @@ class TestInterface(unittest.TestCase):
 		msg = self.factory.get("BarMessage")()
 		msg['name'] = name
 		msg['score'] = score
+		return msg
+
+	def get_vector_msg(self, x=1, y=7.77):
+		msg = self.factory.get("VectorMessage")()
+		msg['x'] = x
+		msg['y'] = y
 		return msg
 
 	def test_message_factory(self):
@@ -72,19 +84,15 @@ class TestInterface(unittest.TestCase):
 		self.assertEqual(packed[5:5 + string_length], struct.pack('!{}s'.format(string_length), str(u'Mr ☃'.encode('utf-8'))))  # name
 		self.assertEqual(packed[5 + string_length:7 + string_length], struct.pack('!H', 42))  # score
 
+	def test_unpacking(self):
+		x = 1
+		y = 7.77
+		msg = self.get_vector_msg(x=1, y=7.77)
+		packed = struct.pack("!B", 3) + struct.pack("!f", 1) + struct.pack("!f", 7.77)
 
-	# def test_unpacking(self):
-	# 	# packed = '\x00\x00\x00\x01\x00\x00\x00\x01\x00\x00\x00\x02\x02\n'
-	# 	TestMessage = self.get_foo_msg_class()
-	# 	x = 12
-	# 	y = 7.77
-	# 	dir = TestMessage.enum_lookup('direction', 'west')
-
-	# 	packed = struct.pack("!I", x) + struct.pack("!f", y) + struct.pack("!B", dir) + "\n"
-	# 	msg = TestMessage.from_packed(packed)
-	# 	self.assertEqual(msg['x'], x)
-	# 	self.assertAlmostEqual(msg['y'], y, places=4)
-	# 	self.assertEqual(msg['direction'], dir)
+		msg = unpack_message(packed, self.factory)
+		self.assertEqual(msg['x'], x)
+		self.assertAlmostEqual(msg['y'], y, places=4)
 
 	# def test_message_packing(self):
 	# 	TestMessage = self.get_foo_msg_class()
