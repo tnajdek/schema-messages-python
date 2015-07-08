@@ -23,53 +23,53 @@ class TestInterface(unittest.TestCase):
 			},
 			'BarMessage': {
 				'format': {
-					'user_name': 'string'
+					'name': 'string',
+					'score': 'ushort',
 				}
 			}
 		})
 
-	def get_foo_msg_class(self):
-		return self.factory.get('FooMessage')
-
-	def get_bar_msg_class(self):
-		return self.factory.get('BarMessage')
-
-	def get_test_msg(self, x=1, y=3.33, direction=2):
-		msg = self.get_foo_msg_class()
+	def get_foo_msg(self, x=1, y=3.33, direction='south'):
+		msg = self.factory.get('FooMessage')()
 		msg['x'] = x
 		msg['y'] = y
 		msg['direction'] = direction
 		return msg
 
+	def get_bar_msg(self, name="Yoda", score=42):
+		msg = self.factory.get("BarMessage")()
+		msg['name'] = name
+		msg['score'] = score
+		return msg
+
 	def test_message_factory(self):
-		TestMessage = self.get_foo_msg_class()
-		BarMessage = self.get_bar_msg_class()
-		self.assertEqual(TestMessage.__name__, 'FooMessage')
-		msg = TestMessage()
-		self.assertEqual(msg.binary_format, '!BBII')
-		msg2 = BarMessage()
-		self.assertEqual(msg2.binary_format, '!BI{}s')
+		FooMessage = self.factory.get('FooMessage')
+		BarMessage = self.factory.get('BarMessage')
+		self.assertEqual(FooMessage.__name__, 'FooMessage')
+		self.assertEqual(FooMessage.binary_format, '!BBII')
+		self.assertEqual(FooMessage.id, 2)
 
+		self.assertEqual(BarMessage.binary_format, '!BI{}sH')
+		self.assertEqual(BarMessage.id, 1)
 
-	# def test_packing(self):
-	# 	msg = self.get_test_msg()
-	# 	packed = msg.pack()
-	# 	self.assertEqual(packed[0:4], struct.pack('!I', 1))
-	# 	self.assertEqual(packed[4:8], struct.pack('!f', 3.33))
-	# 	self.assertEqual(packed[8:9], struct.pack('!B', get_foo_msg_class().enum_lookup('direction', 'south')))
+	def test_packing(self):
+		msg = self.get_foo_msg(x=2, y=4, direction='east')
+		packed = msg.pack()
+		self.assertEqual(len(packed), 1 + 1 + 4 + 4)
+		self.assertEqual(packed[0:1], struct.pack('!B', 2))  # msg id
+		self.assertEqual(packed[1:2], struct.pack('!B', 3))  # direction
+		self.assertEqual(packed[2:6], struct.pack('!I', 2))  # x
+		self.assertEqual(packed[6:10], struct.pack('!I', 4))  # y
 
-	# def test_dehydration(self):
-	# 	TestMessage = self.get_foo_msg_class()
-	# 	x = 12
-	# 	y = 4.44
-	# 	dir = TestMessage.enum_lookup('direction', 'west')
+	def test_packing_with_string(self):
+		msg = self.get_bar_msg()
+		packed = msg.pack()
+		self.assertEqual(len(packed), 1 + 2 + 4 + 4)
+		self.assertEqual(packed[0:1], struct.pack('!B', 1))  # msg id
+		self.assertEqual(packed[1:3], struct.pack('!H', 42))  # score
+		self.assertEqual(packed[3:7], struct.pack('!I', 4))  # length of the following string
+		self.assertEqual(packed[7:11], struct.pack('!4s', 'Yoda'))  # name
 
-	# 	dehydrated_item = [x, y, dir]
-	# 	msg = TestMessage.from_dehydrated(dehydrated_item)
-
-	# 	self.assertEqual(msg['x'], x)
-	# 	self.assertEqual(msg['y'], y)
-	# 	self.assertEqual(msg['direction'], dir)
 
 	# def test_unpacking(self):
 	# 	# packed = '\x00\x00\x00\x01\x00\x00\x00\x01\x00\x00\x00\x02\x02\n'

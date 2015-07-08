@@ -3,29 +3,69 @@ import math
 from bidict import bidict
 
 
-class MessageBase(object):
+class MessageBase(dict):
 	"""
 	Base class for a message that can be packed/unpacked
 	"""
-	enums = {}
+	_enums = {}
+	_data = {}
 
-	def __init__(self, classtype):
-		self._type = classtype
+	class __metaclass__(type):
+		@property
+		def id(cls):
+			return cls._id
+
+		@property
+		def schema(cls):
+			return cls._schema
+
+		@property
+		def format(cls):
+			return cls._format
+
+		@property
+		def enums(self):
+			return self._enums
+
+		@property
+		def binary_format(cls):
+			return cls._binary_format
+
+	# def __init__(self, classtype):
+	# 	self._type = classtype
+
+	# def __setitem__(self, key, value):
+	# 	self._data[key] = value
+
+	# def __getitem__(self, key, value):
+	# 	return self._data[key]
 
 	def dehydrate(self):
-		dehydrated = list()
-		for key in self.schema['format']:
+		format_ = self.__class__.format
+		keys = format_.keys()
+		keys.sort()
+
+		# start off with an id
+		dehydrated = [self.__class__.id, ]
+		# if we encounter any strings, log the length of each one
+		str_lengths = []
+		for key in keys:
 			value = self.get(key, 0)
-			if(hasattr(self, 'dehydrate_%s' % key)):
-				hydrator = getattr(self, 'dehydrate_%s' % key)
-				if(hasattr(hydrator, '__call__')):
-					value = hydrator(value)
+			if(format_[key] == 'enum'):
+				value = self.__class__.enum_lookup(key, value)
+			elif(format_[key] == 'string'):
+				value = str(value)
+				dehydrated.append(len(value))
+				str_lengths.append(len(value))
 			dehydrated.append(value)
-		return dehydrated
+		return (dehydrated, str_lengths)
 
 	def pack(self):
-		dehydrated = self.dehydrate()
-		buffer_ = struct.pack(self.schema['byteformat'], *dehydrated)
+		binary_format = self.__class__.binary_format
+		(dehydrated, str_lengths) = self.dehydrate()
+		if(len(str_lengths)):
+			binary_format = binary_format.format(*str_lengths)
+		buffer_ = struct.pack(binary_format, *dehydrated)
 		return buffer_
 
 	@classmethod
@@ -52,27 +92,17 @@ class MessageBase(object):
 
 	@classmethod
 	def from_packed(cls, data):
+		item = cls()
+		# if('string' in cls.format.values()):
+		# 	for idx, key in enumerate(item.schema['format']):
 		buffer_ = buffer(data)
-		item = struct.unpack_from(cls.schema['byteformat'], buffer_)
+		item = struct.unpack_from(cls.byte_format, buffer_)
 		item = list(item)
 		return cls.from_dehydrated(item)
 
 	@classmethod
-	def from_dehydrated(cls, data):
-		item = cls()
-		for idx, key in enumerate(item.schema['format']):
-			value = data[idx]
-
-			if(hasattr(item, 'hydrate_%s' % key)):
-				hydrator = getattr(item, 'hydrate_%s' % key)
-				if(hasattr(hydrator, '__call__')):
-					value = hydrator(value)
-			item[key] = value
-		return item
-
-	@classmethod
 	def get_byte_length(self):
-		return struct.calcsize(self.schema['byteformat'])
+		return struct.calcsize(self.byte_format)
 
 
 class MessageFactory(object):
@@ -160,7 +190,7 @@ class MessageFactory(object):
 
 		keys = schema.keys()
 		keys.sort()
-		next_id = 0
+		next_id = 1
 
 		try:
 			self.id_binary_format = self.__class__._get_binary_format_symbol(len(schema))
@@ -174,11 +204,12 @@ class MessageFactory(object):
 
 			if('enums' in schema[msg_class_name]):
 				for key in schema[msg_class_name]['enums'].keys():
-					newclass.enums[key] = bidict(schema[msg_class_name]['enums'][key])
+					newclass._enums[key] = bidict(schema[msg_class_name]['enums'][key])
 
-			newclass.binary_format = self.get_binary_format(schema[msg_class_name])
-			newclass.schema = schema
-			newclass.msg_id = next_id
+			newclass._binary_format = self.get_binary_format(schema[msg_class_name])
+			newclass._format = schema[msg_class_name]['format']
+			newclass._schema = schema
+			newclass._id = next_id
 
 			self.msg_classes_by_name[msg_class_name] = newclass
 			self.msg_classes_by_id[next_id] = newclass
@@ -194,7 +225,7 @@ def pack_messages(messages):
 	if(len(messages) == 0):
 		return ''
 
-	buffer_ = struct.pack(messages[0].binaryformat[1], messages[0].msg_id)
+	buffer_ = struct.pack(messages[0].binaryformat[1], messages[0].id)
 	for message in messages:
 		if(message and hasattr(message, 'pack')):
 			buffer_ += message.pack()
