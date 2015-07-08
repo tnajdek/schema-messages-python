@@ -54,6 +54,8 @@ class MessageBase(dict):
 			if(format_[key] == 'enum'):
 				value = self.__class__.enum_lookup(key, value)
 			elif(format_[key] == 'string'):
+				if(type(value) == unicode):
+					value = value.encode('utf-8')
 				value = str(value)
 				dehydrated.append(len(value))
 				str_lengths.append(len(value))

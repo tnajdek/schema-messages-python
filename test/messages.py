@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import unittest
 import struct
 from message import MessageFactory, pack_messages, unpack_mesages
@@ -62,13 +63,14 @@ class TestInterface(unittest.TestCase):
 		self.assertEqual(packed[6:10], struct.pack('!I', 4))  # y
 
 	def test_packing_with_string(self):
-		msg = self.get_bar_msg()
+		msg = self.get_bar_msg(name=u'Mr ☃')
+		string_length = len(str(u'Mr ☃'.encode('utf-8')))
 		packed = msg.pack()
-		self.assertEqual(len(packed), 1 + 2 + 4 + 4)
+		self.assertEqual(len(packed), 1 + 2 + 4 + string_length)
 		self.assertEqual(packed[0:1], struct.pack('!B', 1))  # msg id
-		self.assertEqual(packed[1:3], struct.pack('!H', 42))  # score
-		self.assertEqual(packed[3:7], struct.pack('!I', 4))  # length of the following string
-		self.assertEqual(packed[7:11], struct.pack('!4s', 'Yoda'))  # name
+		self.assertEqual(packed[1:5], struct.pack('!I', string_length))  # length of the following string
+		self.assertEqual(packed[5:5 + string_length], struct.pack('!{}s'.format(string_length), str(u'Mr ☃'.encode('utf-8'))))  # name
+		self.assertEqual(packed[5 + string_length:7 + string_length], struct.pack('!H', 42))  # score
 
 
 	# def test_unpacking(self):
