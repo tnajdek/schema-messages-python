@@ -94,6 +94,18 @@ class TestInterface(unittest.TestCase):
 		self.assertEqual(msg['x'], x)
 		self.assertAlmostEqual(msg['y'], y, places=4)
 
+	def test_unpacking_with_string(self):
+		msg = self.get_bar_msg(name=u'Mr ☃')
+		string_length = len(str(u'Mr ☃'.encode('utf-8')))
+		packed = struct.pack("!B", 1) + \
+			struct.pack("!I", string_length) + \
+			struct.pack("!{}s".format(string_length), str(u'Mr ☃'.encode('utf-8'))) + \
+			struct.pack("!H", 42)
+
+		msg = unpack_message(packed, self.factory)
+		self.assertEqual(msg['name'], u'Mr ☃')
+		self.assertEqual(msg['score'], 42)
+
 	# def test_message_packing(self):
 	# 	TestMessage = self.get_foo_msg_class()
 	# 	msg = self.get_test_msg()

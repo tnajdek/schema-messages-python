@@ -232,17 +232,27 @@ def unpack_message(data, factory):
 
 	keys = cls.format.keys()
 	keys.sort()
-	binary_format = cls.binary_format
+	string_lengths = list()
+	indexes_to_remove = list()
 
 	# proces string msgs here
 	for idx, key in enumerate(keys):
 		if(cls.format[key] == 'string'):
-			import ipdb; ipdb.set_trace()
+			offset = factory.bytes_needed_for_id + idx
+			(string_length, ) = struct.unpack_from('!I', buffer_[offset:offset + 4])
+			string_lengths.append(string_length)
+			indexes_to_remove.append(idx)
 
-	data = struct.unpack_from(binary_format, buffer_)[1:]
+	binary_format = cls.binary_format.format(*string_lengths)
+	data = list(struct.unpack_from(binary_format, buffer_)[1:])
+
+	for idx in indexes_to_remove:
+		del data[idx]
 
 	for idx, key in enumerate(keys):
 		item[key] = data[idx]
+		if(cls.format[key] == 'string'):
+			item[key] = item[key].decode('utf-8')
 
 	return item
 
