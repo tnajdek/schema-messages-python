@@ -1,6 +1,11 @@
+import sys
 import struct
 import math
 from bidict import bidict
+
+
+class ImproperlyConfigured(Exception):
+	pass
 
 
 class MessageBase(dict):
@@ -31,14 +36,20 @@ class MessageBase(dict):
 		def binary_format(cls):
 			return cls._binary_format
 
-	# def __init__(self, classtype):
-	# 	self._type = classtype
+	def get_binary_length(self):
+		"""
+		Returns actual binary length of the message in it's current state
+		"""
+		keys = self.__class__.format.keys()
+		keys.sort()
+		binary_format = self.__class__.binary_format
+		string_lengths = []
+		for key in keys:
+			if(self.__class__.format[key] == 'string'):
+				string_lengths.append(len(self[key]))
 
-	# def __setitem__(self, key, value):
-	# 	self._data[key] = value
-
-	# def __getitem__(self, key, value):
-	# 	return self._data[key]
+		binary_format = binary_format.format(*string_lengths)
+		return struct.calcsize(binary_format)
 
 	def pack(self):
 		binary_format = self.__class__.binary_format
@@ -72,33 +83,28 @@ class MessageBase(dict):
 		try:
 			enum_field = cls.enums[enum_name]
 		except KeyError:
-			raise Exception("Attempted to lookup non-existing enum field {}".format(enum_name))
+			raise KeyError("Attempted to lookup non-existing enum field {}".format(enum_name))
 		try:
 			return enum_field[identifier]
 		except KeyError:
-			raise Exception("No value found for identifier {} in enum {}".format(identifier, enum_name))
+			raise KeyError("No value found for identifier {} in enum {}".format(identifier, enum_name))
 
 	@classmethod
 	def enum_reverse_lookup(cls, enum_name, value):
 		try:
 			enum_field = cls.enums[enum_name]
 		except KeyError:
-			raise Exception("Attempted to lookup non-existing enum field {}".format(enum_name))
+			raise KeyError("Attempted to lookup non-existing enum field {}".format(enum_name))
 		try:
 			return enum_field.inv[value]
 		except KeyError:
-			raise Exception("No identifier found for value {} in enum {}".format(value, enum_name))
-
-	@classmethod
-	def get_byte_length(self):
-		return struct.calcsize(self.binary_format)
+			raise KeyError("No identifier found for value {} in enum {}".format(value, enum_name))
 
 
 class MessageFactory(object):
 	"""
 	Factory generates message classes based on a schema provided
 	It also keeps track of message ids using message_types
-	and will not allow duplicates
 	"""
 
 	@classmethod
@@ -113,7 +119,8 @@ class MessageFactory(object):
 		elif(bytes_needed <= 8):
 			binary_format = 'Q'
 		else:
-			raise Exception("Unable to represent number {} in packed structure".format(number))
+			#  this should never happen, it will fail earlier around when number > sys.maxsize
+			raise OverflowError("Unable to represent number {} in packed structure".format(number))
 
 		return binary_format
 
@@ -147,12 +154,12 @@ class MessageFactory(object):
 				try:
 					binary_format += self.__class__._get_binary_format_symbol(len(msg_schema['format'][field]))
 				except Exception:
-					raise Exception("Enum field can contain the maximum number of 2^64 - 1 possible values.")
+					raise ImproperlyConfigured("Enum field can contain the maximum number {} possible values.".format(sys.maxsize))
 			else:
 				try:
 					binary_format += self.binary_types[msg_schema['format'][field]]
 				except KeyError:
-					raise Exception("Unknown field type {}".format(msg_schema['format'][field]))
+					raise ImproperlyConfigured("Unknown field type {}".format(msg_schema['format'][field]))
 
 		return binary_format
 
@@ -166,13 +173,13 @@ class MessageFactory(object):
 		try:
 			return self.msg_classes_by_name[name]
 		except KeyError:
-			raise Exception("No message by the name of {} found in the schema".format(name))
+			raise KeyError("No message by the name of {} found in the schema".format(name))
 
 	def get_by_id(self, id):
 		try:
 			return self.msg_classes_by_id[id]
 		except KeyError:
-			raise Exception("No message identified by {} found in the schema".format(id))
+			raise KeyError("No message identified by {} found in the schema".format(id))
 
 	def __init__(self, schema):
 		def new_class_init(self, *args, **kwargs):
@@ -182,12 +189,11 @@ class MessageFactory(object):
 		keys = schema.keys()
 		keys.sort()
 		next_id = 1
-		self.bytes_needed_for_id = int(math.ceil(math.log(len(schema), 2) / 8))
-
 		try:
+			self.bytes_needed_for_id = int(math.ceil(math.log(len(schema), 2) / 8))
 			self.id_binary_format = self.__class__._get_binary_format_symbol(len(schema))
-		except Exception:
-			raise Exception('Schema can contain the maximum number of 2^64 - 1 message types.')
+		except OverflowError:
+			raise ImproperlyConfigured('Schema can contain the maximum number of {} message types.'.format(sys.maxsize))
 
 		for msg_class_name in keys:
 			newclass = type(msg_class_name, (MessageBase,), {
@@ -208,24 +214,12 @@ class MessageFactory(object):
 			next_id += 1
 
 
-def pack_messages(messages):
-	"""
-	Packs any number of messages of the same kind into
-	a single binary string for network transmission.
-	First byte identifies a message id.
-	"""
-	if(len(messages) == 0):
-		return ''
-
-	buffer_ = struct.pack(messages[0].binaryformat[1], messages[0].id)
-	for message in messages:
-		if(message and hasattr(message, 'pack')):
-			buffer_ += message.pack()
-	return buffer_
-
-
 def unpack_message(data, factory):
+	"""
+	Unpacks a single message from a binary string to an object instance
+	"""
 	buffer_ = buffer(data)
+
 	(msg_id, ) = struct.unpack_from('!{}'.format(factory.id_binary_format), buffer_[0:factory.bytes_needed_for_id])
 	cls = factory.get_by_id(msg_id)
 	item = cls()
@@ -244,29 +238,40 @@ def unpack_message(data, factory):
 			indexes_to_remove.append(idx)
 
 	binary_format = cls.binary_format.format(*string_lengths)
-	data = list(struct.unpack_from(binary_format, buffer_)[1:])
+	msg_data = list(struct.unpack_from(binary_format, buffer_)[1:])
 
 	for idx in indexes_to_remove:
-		del data[idx]
+		del msg_data[idx]
 
 	for idx, key in enumerate(keys):
-		item[key] = data[idx]
+		item[key] = msg_data[idx]
 		if(cls.format[key] == 'string'):
 			item[key] = item[key].decode('utf-8')
+		if(cls.format[key] == 'enum'):
+			item[key] = cls.enum_reverse_lookup(key, item[key])
 
 	return item
 
 
 def unpack_mesages(data, factory):
 	"""
-	Unpacks any number of messages of the same kind
-	from binary string into object instances.
+	Unpacks any number of messages from binary string into object instances.
 	"""
 	buffer_ = buffer(data)
-	messages = list()
-	message_cls = factory.get_by_id([struct.unpack(self.id_binary_format, buffer_[0])[0]])
-	# message_count = (len(buffer_) - 1) / message_cls.get_byte_length()
-	# for i in range(message_count):
-	# 	msg_buffer = buffer_[1 + i * message_cls.get_byte_length():1 + (i + 1) * message_cls.get_byte_length()]
-	# 	messages.append(message_cls.from_packed(msg_buffer))
+	messages = []
+	while(len(buffer_)):
+		msg = unpack_message(buffer_, factory)
+		buffer_ = buffer(buffer_, msg.get_binary_length())
+		messages.append(msg)
 	return messages
+
+
+def pack_messages(messages):
+	"""
+	Packs any number of message into a binary string
+	"""
+	binary_string = ''
+	for msg in messages:
+		binary_string += msg.pack()
+
+	return binary_string

@@ -34,7 +34,7 @@ var/
 pip-log.txt
 pip-delete-this-directory.txt
 
-_trial_temp
+_trial_temp*
 
 # Unit test / coverage reports
 htmlcov/

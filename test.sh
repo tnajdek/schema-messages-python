@@ -1,2 +1,2 @@
 #!/usr/bin/env bash
-trial test.messages
+nosetests --with-coverage --cover-package=message test/*.py
