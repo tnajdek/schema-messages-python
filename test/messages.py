@@ -6,6 +6,7 @@ import unittest
 import struct
 import math
 import sys
+from builtins import bytes
 from mock import MagicMock
 from message import (
     MessageFactory,
@@ -104,7 +105,7 @@ class TestMessages(unittest.TestCase):
         correctly packed into a binary string
         """
         msg = self.get_bar_msg(name=u'Mr ☃')
-        string_length = len(str(u'Mr ☃'.encode('utf-8')))
+        string_length = len(bytes(u'Mr ☃', 'utf-8'))
         packed = msg.pack()
         self.assertEqual(len(packed), 1 + 2 + 4 + string_length)
         self.assertEqual(packed[0:1], struct.pack('!B', 1))  # msg id
@@ -116,7 +117,7 @@ class TestMessages(unittest.TestCase):
             packed[5:5 + string_length],
             struct.pack(
                 '!{}s'.format(string_length),
-                str(u'Mr ☃'.encode('utf-8'))
+                bytes(u'Mr ☃', 'utf-8')
             )
         )
         self.assertEqual(
@@ -147,11 +148,11 @@ class TestMessages(unittest.TestCase):
         unpacked from a binary string back into an object
         """
         msg = self.get_bar_msg(name=u'Mr ☃')
-        string_length = len(str(u'Mr ☃'.encode('utf-8')))
+        string_length = len(bytes(u'Mr ☃', 'utf-8'))
         packed = struct.pack("!B", 1) + \
             struct.pack("!I", string_length) + \
             struct.pack(
-                "!{}s".format(string_length), str(u'Mr ☃'.encode('utf-8'))
+                "!{}s".format(string_length), bytes(u'Mr ☃', 'utf-8')
             ) + \
             struct.pack("!H", 42)
 
@@ -161,7 +162,7 @@ class TestMessages(unittest.TestCase):
 
     def test_eating_own_dog_food(self):
         """ Test if message remaines the same after packing/unpacking cycle """
-        msg = self.get_foo_msg(y=1.0)
+        msg = self.get_foo_msg()
         packed = msg.pack()
         unpacked = unpack_message(packed, self.factory)
         self.assertEqual(msg, unpacked)
@@ -176,10 +177,10 @@ class TestMessages(unittest.TestCase):
             struct.pack('!I', 1) + struct.pack('!I', 3)
 
         msg = self.get_bar_msg()
-        string_length = len(str(msg['name']))
+        string_length = len(bytes(msg['name'], 'utf-8'))
         packed += struct.pack("!B", msg.__class__.id) + \
             struct.pack("!I", string_length) + \
-            struct.pack("!{}s".format(string_length), msg['name']) + \
+            struct.pack("!{}s".format(string_length), bytes(msg['name'], 'utf-8')) + \
             struct.pack("!H", 42)
         msg = self.get_vector_msg()
         packed += struct.pack("!B", msg.__class__.id) + \
@@ -215,10 +216,10 @@ class TestMessages(unittest.TestCase):
 
         msg2 = self.get_bar_msg()
         messages.append(msg2)
-        string_length = len(str(msg2['name']))
+        string_length = len(bytes(msg2['name'], 'utf-8'))
         our_packed += struct.pack("!B", msg2.__class__.id) + \
             struct.pack("!I", string_length) + \
-            struct.pack("!{}s".format(string_length), msg2['name']) + \
+            struct.pack("!{}s".format(string_length), bytes(msg2['name'], 'utf-8')) + \
             struct.pack("!H", 42)
 
         msg3 = self.get_vector_msg()
@@ -239,7 +240,7 @@ class TestMessages(unittest.TestCase):
         large_schema.__len__.return_value = 300
 
         very_large_schema = MagicMock()
-        very_large_schema.__len__.return_value = math.pow(2, 32) - 1
+        very_large_schema.__len__.return_value = int(math.pow(2, 32) - 1)
 
         edge_case_schema = MagicMock()
         edge_case_schema.__len__.return_value = sys.maxsize

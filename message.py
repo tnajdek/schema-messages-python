@@ -16,6 +16,8 @@ This module contains the following functions:
 import sys
 import struct
 import math
+from future.utils import with_metaclass
+from builtins import bytes
 from bidict import bidict
 
 
@@ -25,49 +27,49 @@ class ImproperlyConfigured(Exception):
     """
     pass
 
+class MessageBaseMeta(type):
+    @property
+    def id(cls):
+        """
+        Unique id generated for this message class based on the schema
+        """
+        return cls._id
 
-class MessageBase(dict):
+    @property
+    def schema(cls):
+        """
+        Reference to the entire schema dict
+        """
+        return cls._schema
+
+    @property
+    def format(cls):
+        """
+        Format of this message as per schema
+        """
+        return cls._format
+
+    @property
+    def enums(cls):
+        """
+        2-way dictionary for looking up enum values both ways
+        """
+        return cls._enums
+
+    @property
+    def binary_format(cls):
+        """
+        Binary format of this message class. This cannot be passed to
+        struct directly as it needs ot be processed by the class instance
+        first to handle dynamic length of a string
+        """
+        return cls._binary_format
+
+
+class MessageBase(with_metaclass(MessageBaseMeta, dict)):
     """
     Base class for a message that can be packed/unpacked
     """
-
-    class __metaclass__(type):
-        @property
-        def id(cls):
-            """
-            Unique id generated for this message class based on the schema
-            """
-            return cls._id
-
-        @property
-        def schema(cls):
-            """
-            Reference to the entire schema dict
-            """
-            return cls._schema
-
-        @property
-        def format(cls):
-            """
-            Format of this message as per schema
-            """
-            return cls._format
-
-        @property
-        def enums(cls):
-            """
-            2-way dictionary for looking up enum values both ways
-            """
-            return cls._enums
-
-        @property
-        def binary_format(cls):
-            """
-            Binary format of this message class. This cannot be passed to
-            struct directly as it needs ot be processed by the class instance
-            first to handle dynamic length of a string
-            """
-            return cls._binary_format
 
     _enums = {}
     _data = {}
@@ -76,7 +78,7 @@ class MessageBase(dict):
         """
         Returns actual binary length of the message in it's current state
         """
-        keys = self.__class__.format.keys()
+        keys = list(self.__class__.format.keys())
         keys.sort()
         binary_format = self.__class__.binary_format
         string_lengths = []
@@ -90,7 +92,7 @@ class MessageBase(dict):
     def pack(self):
         binary_format = self.__class__.binary_format
         format_ = self.__class__.format
-        keys = format_.keys()
+        keys = list(format_.keys())
         keys.sort()
 
         # start off with an id
@@ -102,9 +104,9 @@ class MessageBase(dict):
             if(format_[key] == 'enum'):
                 value = self.__class__.enum_lookup(key, value)
             elif(format_[key] == 'string'):
-                if(type(value) == unicode):
-                    value = value.encode('utf-8')
-                value = str(value)
+                # if(type(value) == unicode):
+                    # value = value.encode('utf-8')
+                value = bytes(value, 'utf-8')
                 data.append(len(value))
                 str_lengths.append(len(value))
             data.append(value)
@@ -209,7 +211,7 @@ class MessageFactory(object):
         for handling dynamic-length strings.
 
         """
-        fields = msg_schema['format'].keys()
+        fields = list(msg_schema['format'].keys())
         fields.sort()
         binary_format = '!'  # we always use network (big-endian) byte order
         binary_format += self.id_binary_format
@@ -283,7 +285,7 @@ class MessageFactory(object):
             if(args):
                 self.hydrate(args[0])
 
-        keys = schema.keys()
+        keys = list(schema.keys())
         keys.sort()
         next_id = 1
         try:
@@ -325,7 +327,7 @@ def unpack_message(data, factory):
     """
     Unpacks a single message from a binary string to an object instance
     """
-    buffer_ = buffer(data)
+    buffer_ = memoryview(data)
 
     (msg_id, ) = struct.unpack_from(
         '!{}'.format(factory.id_binary_format),
@@ -334,7 +336,7 @@ def unpack_message(data, factory):
     cls = factory.get_by_id(msg_id)
     item = cls()
 
-    keys = cls.format.keys()
+    keys = list(cls.format.keys())
     keys.sort()
     string_lengths = list()
     indexes_to_remove = list()
@@ -350,7 +352,10 @@ def unpack_message(data, factory):
             indexes_to_remove.append(idx)
 
     binary_format = cls.binary_format.format(*string_lengths)
-    msg_data = list(struct.unpack_from(binary_format, buffer_)[1:])
+    try:
+        msg_data = list(struct.unpack_from(binary_format, buffer_)[1:])
+    except Exception:
+        import ipdb; ipdb.set_trace()
 
     for idx in indexes_to_remove:
         del msg_data[idx]
@@ -369,11 +374,11 @@ def unpack_mesages(data, factory):
     """
     Unpacks any number of messages from binary string into object instances.
     """
-    buffer_ = buffer(data)
+    buffer_ = memoryview(data)
     messages = []
     while(len(buffer_)):
         msg = unpack_message(buffer_, factory)
-        buffer_ = buffer(buffer_, msg.get_binary_length())
+        buffer_ = memoryview(buffer_)[msg.get_binary_length():]
         messages.append(msg)
     return messages
 
@@ -382,7 +387,7 @@ def pack_messages(messages):
     """
     Packs any number of message into a binary string
     """
-    binary_string = ''
+    binary_string = b''
     for msg in messages:
         binary_string += msg.pack()
 
