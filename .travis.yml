@@ -9,4 +9,4 @@ python:
 install:
   - pip install -r requirements-dev.txt
 # command to run tests
-script: nosetests
+script: nosetests --with-coverage --cover-package=message test/*.py
