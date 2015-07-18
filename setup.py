@@ -16,7 +16,7 @@ config = {
     'url': 'https://github.com/tnajdek/schema-messages-python',
     'author_email': 'tom@doppnet.com',
     'version': '0.1',
-    'packages': ['message']
+    'packages': ['schemamessages']
 }
 
 setup(**config)
