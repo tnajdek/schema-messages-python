@@ -4,7 +4,7 @@ except ImportError:
     from distutils.core import setup
 
 config = {
-    'name': 'schema-messages'
+    'name': 'schema-messages',
     'description': '''Simple library that lets you create binary
         representations of arbitrary messages based on a schema
         provided.
