@@ -8,6 +8,6 @@ install:
   - pip install -r requirements-dev.txt
   - pip install coveralls
 # command to run tests
-script: nosetests --with-coverage --cover-package=schemamessages --logging-level=INFO
+script: nosetests --with-coverage --cover-package=schemamessages
 after_success:
   coveralls

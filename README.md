@@ -3,7 +3,7 @@
 [![Build Status](https://travis-ci.org/tnajdek/schema-messages-python.svg?branch=master)](https://travis-ci.org/tnajdek/schema-messages-python)
 [![Coverage Status](https://coveralls.io/repos/tnajdek/schema-messages-python/badge.svg?branch=master&service=github)](https://coveralls.io/github/tnajdek/schema-messages-python?branch=master)
 
-Schema Messages creates binary representation of structured data that can be efficiently transmitted over network. Anticipated for use in applications where identical structure messages are transmitted repeatively, e.g. in games. For example sending the following message:
+Schema Messages creates binary representation of structured data that can be efficiently transmitted over network. Anticipated for use in applications where identical structure messages are transmitted repeatively, e.g. in multiplayer/online games. For example sending the following message:
 
 	{
 		'player_id': 42,
