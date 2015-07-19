@@ -1,1 +1,1 @@
-from message import *
+from .message import *
