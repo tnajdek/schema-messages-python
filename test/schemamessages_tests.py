@@ -276,6 +276,42 @@ class TestMessages(unittest.TestCase):
 
     def test_bad_enum(self):
         """
+        Test if schema with invalid enums is caught correctly
+        """
+
+        allthings = MagicMock()
+        allthings.__len__.return_value = sys.maxsize + 1
+
+        bad_schema = {
+            'BadMessage': {
+                'enums': {
+                    'allthings': allthings
+                },
+                'format': {
+                    'allthings': 'enum'
+                }
+            }
+        }
+
+        self.assertRaises(ImproperlyConfigured, MessageFactory, bad_schema)
+
+    def test_bad_msg_lookup(self):
+        """
+        Test if making an invalid message class lookup is caught correctly
+        """
+
+        try:
+            self.factory.get('FooMessage')
+            self.factory.get(1)
+        except KeyError:
+            self.fail()
+
+        self.assertRaises(KeyError, self.factory.get, 'FlyingCars')
+        self.assertRaises(KeyError, self.factory.get, 999)
+
+
+    def test_bad_enum_lookup(self):
+        """
         Test if making an invalid enum lookup is caught correctly
         """
 

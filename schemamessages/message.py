@@ -163,6 +163,13 @@ class MessageFactory(object):
 
     @classmethod
     def _get_binary_format_symbol(cls, number):
+        if(number > sys.maxsize or number > 1.8446744073709552e+19):
+            raise OverflowError(
+                "Unable to represent number {} in packed structure".format(
+                    number
+                )
+            )
+
         bytes_needed = math.ceil(math.log(number, 2) / 8)
         if(bytes_needed <= 1):
             binary_format = 'B'
@@ -172,14 +179,6 @@ class MessageFactory(object):
             binary_format = 'I'
         elif(bytes_needed <= 8):
             binary_format = 'Q'
-        else:
-            #  this should never happen, it will fail earlier
-            #  around when number > sys.maxsize
-            raise OverflowError(
-                "Unable to represent number {} in packed structure".format(
-                    number
-                )
-            )
 
         return binary_format
 
@@ -222,7 +221,7 @@ class MessageFactory(object):
             elif(msg_schema['format'][field] == 'enum'):
                 try:
                     binary_format += self.__class__._get_binary_format_symbol(
-                        len(msg_schema['format'][field])
+                        len(msg_schema['enums'][field])
                     )
                 except Exception:
                     raise ImproperlyConfigured(
@@ -352,10 +351,7 @@ def unpack_message(data, factory):
             indexes_to_remove.append(idx)
 
     binary_format = cls.binary_format.format(*string_lengths)
-    try:
-        msg_data = list(struct.unpack_from(binary_format, buffer_)[1:])
-    except Exception:
-        import ipdb; ipdb.set_trace()
+    msg_data = list(struct.unpack_from(binary_format, buffer_)[1:])
 
     for idx in indexes_to_remove:
         del msg_data[idx]
