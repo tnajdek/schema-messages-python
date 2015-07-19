@@ -280,10 +280,6 @@ class MessageFactory(object):
         Constructor for message factory, takes schema (dict) as the first
         argument and generates message classes based on the schema.
         """
-        def new_class_init(self, *args, **kwargs):
-            if(args):
-                self.hydrate(args[0])
-
         keys = list(schema.keys())
         keys.sort()
         next_id = 1
@@ -300,9 +296,7 @@ class MessageFactory(object):
                 number of {} message types.'''.format(sys.maxsize))
 
         for msg_class_name in keys:
-            newclass = type(msg_class_name, (MessageBase,), {
-                '__init__': new_class_init
-            })
+            newclass = type(msg_class_name, (MessageBase,), {})
 
             if('enums' in schema[msg_class_name]):
                 for key in schema[msg_class_name]['enums'].keys():
