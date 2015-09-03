@@ -8,7 +8,7 @@ import math
 import sys
 from builtins import bytes
 from mock import MagicMock
-from schemamessages import (
+from schemamessages.message import (
     MessageFactory,
     ImproperlyConfigured,
     pack_messages,

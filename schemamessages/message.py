@@ -50,6 +50,13 @@ class MessageBaseMeta(type):
         return cls._format
 
     @property
+    def keys(cls):
+        """
+        Format of this message as per schema
+        """
+        return cls._keys
+
+    @property
     def enums(cls):
         """
         2-way dictionary for looking up enum values both ways
@@ -78,8 +85,7 @@ class MessageBase(with_metaclass(MessageBaseMeta, dict)):
         """
         Returns actual binary length of the message in it's current state
         """
-        keys = list(self.__class__.format.keys())
-        keys.sort()
+        keys = self.__class__.keys
         binary_format = self.__class__.binary_format
         string_lengths = []
         for key in keys:
@@ -92,15 +98,14 @@ class MessageBase(with_metaclass(MessageBaseMeta, dict)):
     def pack(self):
         binary_format = self.__class__.binary_format
         format_ = self.__class__.format
-        keys = list(format_.keys())
-        keys.sort()
+        keys = self.__class__.keys
 
         # start off with an id
         data = [self.__class__.id, ]
         # if we encounter any strings, log the length of each one
         str_lengths = []
         for key in keys:
-            value = self.get(key, 0)
+            value = self[key]
             if(format_[key] == 'enum'):
                 value = self.__class__.enum_lookup(key, value)
             elif(format_[key] == 'string'):
@@ -111,7 +116,7 @@ class MessageBase(with_metaclass(MessageBaseMeta, dict)):
                 str_lengths.append(len(value))
             data.append(value)
 
-        if(len(str_lengths)):
+        if(str_lengths):
             binary_format = binary_format.format(*str_lengths)
         buffer_ = struct.pack(binary_format, *data)
         return buffer_
@@ -308,6 +313,8 @@ class MessageFactory(object):
                 schema[msg_class_name]
             )
             newclass._format = schema[msg_class_name]['format']
+            newclass._keys = list(newclass._format)
+            newclass._keys.sort()
             newclass._schema = schema
             newclass._id = next_id
 
@@ -323,14 +330,12 @@ def unpack_message(data, factory):
     buffer_ = memoryview(data)
 
     (msg_id, ) = struct.unpack_from(
-        '!{}'.format(factory.id_binary_format),
-        buffer_[0:factory.bytes_needed_for_id]
+        factory.id_binary_format,
+        buffer_
     )
     cls = factory.get_by_id(msg_id)
     item = cls()
-
-    keys = list(cls.format.keys())
-    keys.sort()
+    keys = cls.keys
     string_lengths = list()
     indexes_to_remove = list()
 
