@@ -95,7 +95,13 @@ class MessageBase(with_metaclass(MessageBaseMeta, dict)):
         binary_format = binary_format.format(*string_lengths)
         return struct.calcsize(binary_format)
 
+
     def pack(self):
+        (binary_format, data) = self.pre_pack()
+        buffer_ = struct.pack(binary_format, *data)
+        return buffer_
+
+    def pre_pack(self):
         binary_format = self.__class__.binary_format
         format_ = self.__class__.format
         keys = self.__class__.keys
@@ -109,8 +115,6 @@ class MessageBase(with_metaclass(MessageBaseMeta, dict)):
             if(format_[key] == 'enum'):
                 value = self.__class__.enum_lookup(key, value)
             elif(format_[key] == 'string'):
-                # if(type(value) == unicode):
-                    # value = value.encode('utf-8')
                 value = bytes(value, 'utf-8')
                 data.append(len(value))
                 str_lengths.append(len(value))
@@ -118,8 +122,8 @@ class MessageBase(with_metaclass(MessageBaseMeta, dict)):
 
         if(str_lengths):
             binary_format = binary_format.format(*str_lengths)
-        buffer_ = struct.pack(binary_format, *data)
-        return buffer_
+
+        return (binary_format, data)
 
     @classmethod
     def enum_lookup(cls, enum_name, identifier):
@@ -382,8 +386,13 @@ def pack_messages(messages):
     """
     Packs any number of message into a binary string
     """
-    binary_string = b''
-    for msg in messages:
-        binary_string += msg.pack()
+    format_ = '!'
+    data = []
 
-    return binary_string
+
+    for msg in messages:
+        (msg_format, msg_data) = msg.pre_pack()
+        format_ += msg_format[1:]
+        data += msg_data
+
+    return struct.pack(format_, *data)
