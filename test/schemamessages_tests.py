@@ -8,13 +8,10 @@ import math
 import sys
 from builtins import bytes
 from mock import MagicMock
-from schemamessages.message import (
-    MessageFactory,
-    ImproperlyConfigured,
-    pack_messages,
-    unpack_message,
-    unpack_mesages
-)
+from schemamessages.factory import MessageFactory
+from schemamessages.exceptions import ImproperlyConfigured
+from schemamessages.packers import pack_message, pack_messages
+from schemamessages.unpackers import unpack_message, unpack_messages
 
 
 class TestMessages(unittest.TestCase):
@@ -63,7 +60,7 @@ class TestMessages(unittest.TestCase):
         msg['direction'] = direction
         return msg
 
-    def get_bar_msg(self, name="Yoda", score=42):
+    def get_bar_msg(self, name=u'Yoda', score=42):
         """" Returns an instance of BarMessage """
         msg = self.factory.get("BarMessage")()
         msg['name'] = name
@@ -84,7 +81,6 @@ class TestMessages(unittest.TestCase):
         self.assertEqual(FooMessage.__name__, 'FooMessage')
         self.assertEqual(FooMessage.binary_format, '!BBII')
         self.assertEqual(FooMessage.id, 2)
-        self.assertEqual(FooMessage.schema, self.schema)
 
         self.assertEqual(BarMessage.binary_format, '!BI{}sH')
         self.assertEqual(BarMessage.id, 1)
@@ -92,7 +88,7 @@ class TestMessages(unittest.TestCase):
     def test_packing(self):
         """" Test if message is packed correctly into a binary string """
         msg = self.get_foo_msg(x=2, y=4, direction='east')
-        packed = msg.pack()
+        packed = pack_message(msg)
         self.assertEqual(len(packed), 1 + 1 + 4 + 4)
         self.assertEqual(packed[0:1], struct.pack('!B', 2))  # msg id
         self.assertEqual(packed[1:2], struct.pack('!B', 3))  # direction
@@ -106,7 +102,7 @@ class TestMessages(unittest.TestCase):
         """
         msg = self.get_bar_msg(name=u'Mr ☃')
         string_length = len(bytes(u'Mr ☃', 'utf-8'))
-        packed = msg.pack()
+        packed = pack_message(msg)
         self.assertEqual(len(packed), 1 + 2 + 4 + string_length)
         self.assertEqual(packed[0:1], struct.pack('!B', 1))  # msg id
         self.assertEqual(
@@ -163,7 +159,7 @@ class TestMessages(unittest.TestCase):
     def test_eating_own_dog_food(self):
         """ Test if message remaines the same after packing/unpacking cycle """
         msg = self.get_foo_msg()
-        packed = msg.pack()
+        packed = pack_message(msg)
         unpacked = unpack_message(packed, self.factory)
         self.assertEqual(msg, unpacked)
 
@@ -187,7 +183,7 @@ class TestMessages(unittest.TestCase):
             struct.pack("!f", 1) + \
             struct.pack("!f", 7.77)
 
-        unpacked = unpack_mesages(packed, self.factory)
+        unpacked = unpack_messages(packed, self.factory)
         self.assertEqual(unpacked[0].__class__.__name__, 'FooMessage')
         self.assertEqual(unpacked[1].__class__.__name__, 'BarMessage')
         self.assertEqual(unpacked[2].__class__.__name__, 'VectorMessage')

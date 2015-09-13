@@ -21,12 +21,6 @@ from builtins import bytes
 from bidict import bidict
 
 
-class ImproperlyConfigured(Exception):
-    """
-    This exception is thrown when invalid schema is detected
-    """
-    pass
-
 class MessageBaseMeta(type):
     @property
     def id(cls):
@@ -34,13 +28,6 @@ class MessageBaseMeta(type):
         Unique id generated for this message class based on the schema
         """
         return cls._id
-
-    @property
-    def schema(cls):
-        """
-        Reference to the entire schema dict
-        """
-        return cls._schema
 
     @property
     def format(cls):
@@ -72,59 +59,38 @@ class MessageBaseMeta(type):
         """
         return cls._binary_format
 
+    @property
+    def binary_length(cls):
+        """
+        """
+        return cls._binary_length
+
+    @property
+    def struct(cls):
+        """
+        """
+        return cls._struct
+
 
 class MessageBase(with_metaclass(MessageBaseMeta, dict)):
     """
     Base class for a message that can be packed/unpacked
     """
+    def __init__(self, *args, **kwargs):
+        self.struct = self.__class__._struct
+        self.binary_length = self.__class__._binary_length
+        super(MessageBase, self).__init__(*args, **kwargs)
 
-    _enums = {}
-    _data = {}
+    def inflate(self, data):
+        self.update(zip(self.__class__.keys, data))
 
-    def get_binary_length(self):
-        """
-        Returns actual binary length of the message in it's current state
-        """
-        keys = self.__class__.keys
-        binary_format = self.__class__.binary_format
-        string_lengths = []
-        for key in keys:
-            if(self.__class__.format[key] == 'string'):
-                string_lengths.append(len(self[key]))
-
-        binary_format = binary_format.format(*string_lengths)
-        return struct.calcsize(binary_format)
+    def deflate(self):
+        return [self[key] for key in self.__class__.keys]
 
 
-    def pack(self):
-        (binary_format, data) = self.pre_pack()
-        buffer_ = struct.pack(binary_format, *data)
-        return buffer_
 
-    def pre_pack(self):
-        binary_format = self.__class__.binary_format
-        format_ = self.__class__.format
-        keys = self.__class__.keys
 
-        # start off with an id
-        data = [self.__class__.id, ]
-        # if we encounter any strings, log the length of each one
-        str_lengths = []
-        for key in keys:
-            value = self[key]
-            if(format_[key] == 'enum'):
-                value = self.__class__.enum_lookup(key, value)
-            elif(format_[key] == 'string'):
-                value = bytes(value, 'utf-8')
-                data.append(len(value))
-                str_lengths.append(len(value))
-            data.append(value)
-
-        if(str_lengths):
-            binary_format = binary_format.format(*str_lengths)
-
-        return (binary_format, data)
-
+class MessageEnumMixin(object):
     @classmethod
     def enum_lookup(cls, enum_name, identifier):
         try:
@@ -163,236 +129,48 @@ class MessageBase(with_metaclass(MessageBaseMeta, dict)):
                 )
             )
 
+    def inflate(self, data):
+        super(MessageEnumMixin, self).inflate(data)
+        for key in self.__class__._enum_keys:
+            self[key] = self.__class__.enums[key].inv[self[key]]
 
-class MessageFactory(object):
-    """
-    Factory generates message classes based on a schema provided
-    It also keeps track of message ids using message_types
-    """
+    def deflate(self):
+        deflated = super(MessageEnumMixin, self).deflate()
+        for i, idx in enumerate(self.__class__._enum_indexes):
+            deflated[idx] = self.__class__.enums[self.__class__._enum_keys[i]][deflated[idx]]
 
-    @classmethod
-    def _get_binary_format_symbol(cls, number):
-        if(number > sys.maxsize or number > 1.8446744073709552e+19):
-            raise OverflowError(
-                "Unable to represent number {} in packed structure".format(
-                    number
-                )
-            )
+        return deflated
 
-        bytes_needed = math.ceil(math.log(number, 2) / 8)
-        if(bytes_needed <= 1):
-            binary_format = 'B'
-        elif(bytes_needed == 2):
-            binary_format = 'H'
-        elif(bytes_needed <= 4):
-            binary_format = 'I'
-        elif(bytes_needed <= 8):
-            binary_format = 'Q'
 
-        return binary_format
+class MessageStringMixing(object):
+    def __init__(self, *args, **kwargs):
+        self.update(*args, **kwargs)
 
-    msg_classes_by_name = {}
-    msg_classes_by_id = {}
-    binary_types = {
-        'bool': '?',
-        'byte': 'b',
-        'ubyte': 'B',
-        'char': 'c',
-        'short': 'h',
-        'ushort': 'H',
-        'int': 'i',
-        'uint': 'I',
-        'int64': 'q',
-        'uint64': 'Q',
-        'float': 'f',
-        'double': 'd'
-    }
-
-    def get_binary_format(self, msg_schema):
-        """
-        Build binary format for give message schema.
-        Used internally to populate "binary_format" field on
-        the message class.
-
-        Output of thes method cannot be used directly with struct
-        as it needs to be processed by the message instance first
-        for handling dynamic-length strings.
-
-        """
-        fields = list(msg_schema['format'].keys())
-        fields.sort()
-        binary_format = '!'  # we always use network (big-endian) byte order
-        binary_format += self.id_binary_format
-
-        for field in fields:
-            if(msg_schema['format'][field] == 'string'):
-                binary_format += 'I{}s'
-            elif(msg_schema['format'][field] == 'enum'):
-                try:
-                    binary_format += self.__class__._get_binary_format_symbol(
-                        len(msg_schema['enums'][field])
-                    )
-                except Exception:
-                    raise ImproperlyConfigured(
-                        '''Enum field can contain the
-                        maximum number {} possible values'''.format(
-                            sys.maxsize
-                        )
-                    )
-            else:
-                try:
-                    field_type = msg_schema['format'][field]
-                    binary_format += self.binary_types[field_type]
-                except KeyError:
-                    raise ImproperlyConfigured(
-                        "Unknown field type {}".format(
-                            msg_schema['format'][field]
-                        )
-                    )
-
-        return binary_format
-
-    def get(self, id_or_name):
-        """
-        Convinience method to return message class for given name or id
-        If number is given, we assume id, otheriwse - name.
-        """
-        if(type(id_or_name) == int):
-            return self.get_by_id(id_or_name)
+        if(args or kwargs):
+            self._calc_binary_length()
         else:
-            return self.get_by_name(id_or_name)
+            self.binary_length = self.__class__._base_binary_length
 
-    def get_by_name(self, name):
-        """ Return message class given a name (string) """
-        try:
-            return self.msg_classes_by_name[name]
-        except KeyError:
-            raise KeyError(
-                'No message by the name of {} found in the schema'.format(
-                    name
-                )
-            )
+    def _calc_binary_length(self):
+        self._strings_lengths = [len(bytes(self[key], 'utf-8')) for key in self.__class__._string_keys]
+        self.binary_length = self.__class__._base_binary_length + sum(self._strings_lengths)
+        self.binary_format = self.__class__._base_binary_format.format(*self._strings_lengths)
+        self.struct = struct.Struct(self.binary_format)
 
-    def get_by_id(self, id):
-        """ Return message class for given id """
-        try:
-            return self.msg_classes_by_id[id]
-        except KeyError:
-            raise KeyError(
-                'No message identified by {} found in the schema'.format(
-                    id
-                )
-            )
+    def __setitem__(self, key, value):
+        super(MessageStringMixing, self).__setitem__(key, value)
+        if(key in self.__class__._string_keys):
+            self._calc_binary_length()
 
-    def __init__(self, schema):
-        """
-        Constructor for message factory, takes schema (dict) as the first
-        argument and generates message classes based on the schema.
-        """
-        keys = list(schema.keys())
-        keys.sort()
-        next_id = 1
-        try:
-            self.bytes_needed_for_id = int(
-                math.ceil(math.log(len(schema) + 1, 2) / 8)
-            )
-            self.id_binary_format = self.__class__._get_binary_format_symbol(
-                len(schema)
-            )
-        except OverflowError:
-            raise ImproperlyConfigured(
-                '''Schema can contain the maximum
-                number of {} message types.'''.format(sys.maxsize))
+    def inflate(self, data):
+        super(MessageStringMixing, self).inflate(data)
+        for key in self.__class__._string_keys:
+            self[key] = self[key].decode('utf-8')
 
-        for msg_class_name in keys:
-            newclass = type(msg_class_name, (MessageBase,), {})
+    def deflate(self):
+        deflated = super(MessageStringMixing, self).deflate()
+        for i, idx in enumerate(self.__class__._string_indexes):
+            deflated[i + idx] = bytes(deflated[i + idx], 'utf-8')
+            deflated.insert(i + idx, self._strings_lengths[i])
 
-            if('enums' in schema[msg_class_name]):
-                for key in schema[msg_class_name]['enums'].keys():
-                    newclass._enums[key] = bidict(
-                        schema[msg_class_name]['enums'][key]
-                    )
-
-            newclass._binary_format = self.get_binary_format(
-                schema[msg_class_name]
-            )
-            newclass._format = schema[msg_class_name]['format']
-            newclass._keys = list(newclass._format)
-            newclass._keys.sort()
-            newclass._schema = schema
-            newclass._id = next_id
-
-            self.msg_classes_by_name[msg_class_name] = newclass
-            self.msg_classes_by_id[next_id] = newclass
-            next_id += 1
-
-
-def unpack_message(data, factory):
-    """
-    Unpacks a single message from a binary string to an object instance
-    """
-    buffer_ = memoryview(data)
-
-    (msg_id, ) = struct.unpack_from(
-        factory.id_binary_format,
-        buffer_
-    )
-    cls = factory.get_by_id(msg_id)
-    item = cls()
-    keys = cls.keys
-    string_lengths = list()
-    indexes_to_remove = list()
-
-    # proces string msgs here
-    for idx, key in enumerate(keys):
-        if(cls.format[key] == 'string'):
-            offset = factory.bytes_needed_for_id + idx
-            (string_length, ) = struct.unpack_from(
-                '!I', buffer_[offset:offset + 4]
-            )
-            string_lengths.append(string_length)
-            indexes_to_remove.append(idx)
-
-    binary_format = cls.binary_format.format(*string_lengths)
-    msg_data = list(struct.unpack_from(binary_format, buffer_)[1:])
-
-    for idx in indexes_to_remove:
-        del msg_data[idx]
-
-    for idx, key in enumerate(keys):
-        item[key] = msg_data[idx]
-        if(cls.format[key] == 'string'):
-            item[key] = item[key].decode('utf-8')
-        if(cls.format[key] == 'enum'):
-            item[key] = cls.enum_reverse_lookup(key, item[key])
-
-    return item
-
-
-def unpack_mesages(data, factory):
-    """
-    Unpacks any number of messages from binary string into object instances.
-    """
-    buffer_ = memoryview(data)
-    messages = []
-    while(len(buffer_)):
-        msg = unpack_message(buffer_, factory)
-        buffer_ = memoryview(buffer_)[msg.get_binary_length():]
-        messages.append(msg)
-    return messages
-
-
-def pack_messages(messages):
-    """
-    Packs any number of message into a binary string
-    """
-    format_ = '!'
-    data = []
-
-
-    for msg in messages:
-        (msg_format, msg_data) = msg.pre_pack()
-        format_ += msg_format[1:]
-        data += msg_data
-
-    return struct.pack(format_, *data)
+        return deflated
