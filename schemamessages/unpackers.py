@@ -28,10 +28,7 @@ def unpack_messages(packed, factory):
             packed, offset
         )
 
-        try:
-            MsgCls = factory.get_by_id(msg_id)
-        except Exception as e:
-            import ipdb; ipdb.set_trace()
+        MsgCls = factory.get_by_id(msg_id)
 
         try:
             data = MsgCls.struct.unpack_from(packed, offset)
@@ -49,8 +46,9 @@ def unpack_messages(packed, factory):
 
     return messages
 
-def pack_messages_of_single_type():
-    pass
+def unpack_messages_of_single_type(packed, factory):
+    # @TODO: optimise me :)
+    return unpack_messages(packed, factory)
 # def pack_messages_of_single_type():
 #     messages = []
 #     offset = 0

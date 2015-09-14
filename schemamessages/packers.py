@@ -25,7 +25,7 @@ def pack_messages_of_single_type(messages):
     offset = 0
 
     for msg in messages:
-        msg.struct.pack_into(buf, offset, message.__class__.id, *msg.deflate())
+        msg.struct.pack_into(buf, offset, msg.__class__.id, *msg.deflate())
         offset += msg.__class__.binary_length
 
     return buf.raw

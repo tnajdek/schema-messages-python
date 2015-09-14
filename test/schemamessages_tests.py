@@ -10,8 +10,8 @@ from builtins import bytes
 from mock import MagicMock
 from schemamessages.factory import MessageFactory
 from schemamessages.exceptions import ImproperlyConfigured
-from schemamessages.packers import pack_message, pack_messages
-from schemamessages.unpackers import unpack_message, unpack_messages
+from schemamessages.packers import pack_message, pack_messages, pack_messages_of_single_type
+from schemamessages.unpackers import unpack_message, unpack_messages, unpack_messages_of_single_type
 
 
 class TestMessages(unittest.TestCase):
@@ -165,8 +165,8 @@ class TestMessages(unittest.TestCase):
 
     def test_unpacking_many(self):
         """
-        Test if it is possible to unpack multiple messages of different types
-        from a binary string to an array of objects
+        Test if multiple messages are correctly unpacked
+        from a binary string ot an array of objects
         """
         msg = self.get_foo_msg()
         packed = struct.pack("!B", msg.__class__.id) + struct.pack("!B", 2) + \
@@ -198,6 +198,27 @@ class TestMessages(unittest.TestCase):
         self.assertEqual(unpacked[2]['x'], 1)
         self.assertAlmostEqual(unpacked[2]['y'], 7.77, places=2)
 
+    def test_unpacking_many_of_one_type(self):
+        """
+        Test if multiple messages of one kind are correctly unpacked
+        from a binary string ot an array of objects
+        """
+
+        packed = b''
+
+        for n in range(10):
+            msg = self.get_foo_msg()
+            packed += struct.pack("!B", msg.__class__.id) + struct.pack("!B", 2) + \
+                struct.pack('!I', 1) + struct.pack('!I', 3)
+
+        unpacked = unpack_messages_of_single_type(packed, self.factory)
+        self.assertEqual(unpacked[0].__class__.__name__, 'FooMessage')
+        self.assertEqual(unpacked[1].__class__.__name__, 'FooMessage')
+
+        self.assertEqual(unpacked[0]['direction'], 'south')
+        self.assertEqual(unpacked[0]['x'], 1)
+        self.assertEqual(unpacked[0]['y'], 3)
+
     def test_packing_many(self):
         """
         Test if an array of messages is correctly packed into a binary string
@@ -225,6 +246,24 @@ class TestMessages(unittest.TestCase):
             struct.pack("!f", 7.77)
 
         their_packed = pack_messages(messages)
+        self.assertEqual(our_packed, their_packed)
+
+    def test_packing_many_of_one_type(self):
+        """
+        Test if an array of messages is correctly packed into a binary string
+        """
+        messages = []
+        our_packed = b''
+
+        for n in range(10):
+            msg = self.get_foo_msg()
+            messages.append(msg)
+            our_packed += struct.pack("!B", msg.__class__.id) + \
+                struct.pack("!B", 2) + \
+                struct.pack('!I', 1) + \
+                struct.pack('!I', 3)
+
+        their_packed = pack_messages_of_single_type(messages)
         self.assertEqual(our_packed, their_packed)
 
     def test_edge_case_schemas(self):
