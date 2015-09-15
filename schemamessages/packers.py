@@ -20,12 +20,11 @@ def pack_messages(messages):
 
 
 def pack_messages_of_single_type(messages):
-    lng = messages[0].binary_length * len(messages)
-    buf = create_string_buffer(lng)
+    buf = create_string_buffer(messages[0].binary_length * len(messages))
     offset = 0
 
     for msg in messages:
         msg.struct.pack_into(buf, offset, msg.__class__.id, *msg.deflate())
-        offset += msg.__class__.binary_length
+        offset += msg.binary_length
 
     return buf.raw
