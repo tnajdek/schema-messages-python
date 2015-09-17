@@ -88,8 +88,6 @@ class MessageBase(with_metaclass(MessageBaseMeta, dict)):
         return [self[key] for key in self.__class__.keys]
 
 
-
-
 class MessageEnumMixin(object):
     @classmethod
     def enum_lookup(cls, enum_name, identifier):

@@ -1,0 +1,2 @@
+recursive-include schemamessages *.c
+recursive-include schemamessages *.pyx
