@@ -1,6 +1,9 @@
 import struct
 
 def unpack_message(packed, factory):
+	"""
+	Unpack a single message from a bianry string back into an object
+	"""
     (msg_id, ) = struct.unpack_from(
         factory.id_binary_format,
         packed, 0
@@ -18,6 +21,9 @@ def unpack_message(packed, factory):
 
 
 def unpack_messages(packed, factory):
+	"""
+	Unpack a list of messages from a binary string back into objects
+	"""
     messages = []
     offset = 0
     lng = len(packed)
@@ -45,33 +51,3 @@ def unpack_messages(packed, factory):
         messages.append(item)
 
     return messages
-
-def unpack_messages_of_single_type(packed, factory):
-    # @TODO: optimise me :)
-    return unpack_messages(packed, factory)
-# def pack_messages_of_single_type():
-#     messages = []
-#     offset = 0
-#     lng = len(packed)
-#     (msg_id, ) = struct.unpack_from(
-#         factory.id_binary_format,
-#         packed, 0
-#     )
-#     offset += factory.bytes_needed_for_id
-#     MsgCls = factory.get_by_id(msg_id)
-
-#     while offset < lng:
-#         try:
-#             data = MsgCls.struct.unpack_from(packed, offset)
-#         except Exception as e:
-#             strings_lengths = [struct.unpack_from('!I', packed, offset + o)[0] for o in MsgCls._string_offsets]
-#             binary_format = MsgCls._base_binary_length.format(strings_lengths)
-#             msg_struct = struct.Struct(binary_format)
-#             data = msg_struct.unpack_from(packed, offset)
-#             offset += msg_struct.size - factory.bytes_needed_for_id
-
-#         item = MsgCls(*data[1:])
-#         messages.append(item)
-
-#     return messages
-

@@ -28,3 +28,94 @@ However bear in mind that to encode/decode the message on either end, one needs 
 	 }
 
 Schemas **must** be pre-shared on both ends for communication to works.
+
+#Installation
+
+Schema Messages can be installed using pip:
+
+    pip install schema-messages
+
+#Usage
+
+Schema Messages are distributed using Universal Module Definition and can be included directly using a script tag, or as a part of your AMD or Common JS application. It can also be used in Node:
+
+    from schemamessages import MessageFactory, unpack_message, pack_message
+
+First thing you need is to define schema describing every possible message that your application will ever need to pack/unpack. Here is an example of a Message Factory with a schema containing one simple message:
+
+    schema = {
+        'FooMessage': {
+            'enums': {
+                'direction': {
+                    'north': 1,
+                    'south': 2,
+                    'east': 3,
+                    'west': 4
+                }
+            },
+            'format': {
+                'x': 'uint',
+                'y': 'uint',
+                'direction': 'enum'
+            }
+        }
+    }
+    factory = MessageFactory(schema)
+
+With factory created you can prepare your message:
+
+    FooMessage = factory.get('FooMessage')
+    msg = FooMessage(x = 123, y = 456, direction = 'south');
+
+Now message can be packed into a binary string:
+
+    bytes = pack_message(msg);
+
+And bytes can be sent over the WebSocket. On the other end you will also need a factory with exactly the same schema. Equiped with that you can unpack your message:
+
+    msg = unpack_message(bytes);
+
+For more examples see [tests](https://github.com/tnajdek/schema-messages-python/blob/master/test/schemamessages_tests.py) and [demo app](https://github.com/tnajdek/schema-messages-demo)
+
+#Message Types
+
+Schema Messages can pack/unpack the following types:
+
+**bool**
+Boolean type (true/false), packed into 1 byte
+
+**byte**
+A number between -127 and 127, packed into 1 byte
+
+**ubyte**
+A number between 0 and 255, packed into 1 byte
+
+**short**
+A number between -32,768 and 32,767, packed into 2 bytes
+
+**ushort**
+A number between 0 and 65,535, packed into 2 bytes
+
+**int**
+A number between -2,147,483,648 and 2,147,483,647, packed into 4 bytes
+
+**uint**
+A number between 0 and 4,294,967,295, packed into 4 bytes
+
+**int64**
+A number between –9,223,372,036,854,775,808 to 9,223,372,036,854,775,807, packed into 8 bytes.
+
+**uint64**
+A number between 0 and 18,446,744,073,709,551,615, packed into 8 bytes.
+
+**float**
+A 32 to bit floating-point value, packed into 4 bytes
+
+**double**
+A 64-bit floating-point value, packed into 8 bytes
+
+**string**
+A string value, unicode is supported. Total binary length is: binary length of the string + 4 bytes overhead.
+
+**enum**
+The enum is used to declare an enumeration, values for which need to be specified in the schema. Binary length is chosen to be as small as possible based on the number of values within the enumeration.
