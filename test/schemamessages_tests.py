@@ -11,7 +11,7 @@ from mock import MagicMock
 from schemamessages.factory import MessageFactory
 from schemamessages.exceptions import ImproperlyConfigured
 from schemamessages.packers import pack_message, pack_messages, pack_messages_of_single_type
-from schemamessages.unpackers import unpack_message, unpack_messages, unpack_messages_of_single_type
+from schemamessages.unpackers import unpack_message, unpack_messages
 
 
 class TestMessages(unittest.TestCase):
@@ -211,7 +211,7 @@ class TestMessages(unittest.TestCase):
             packed += struct.pack("!B", msg.__class__.id) + struct.pack("!B", 2) + \
                 struct.pack('!I', 1) + struct.pack('!I', 3)
 
-        unpacked = unpack_messages_of_single_type(packed, self.factory)
+        unpacked = unpack_messages(packed, self.factory)
         self.assertEqual(unpacked[0].__class__.__name__, 'FooMessage')
         self.assertEqual(unpacked[1].__class__.__name__, 'FooMessage')
 
