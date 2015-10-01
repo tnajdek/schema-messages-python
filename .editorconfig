@@ -1,7 +1,7 @@
 [*]
 indent_style = tab
 
-[*.py]
+[*.{py,pyx}]
 indent_style = space
 indent_size = 4
 trim_trailing_whitespace = true

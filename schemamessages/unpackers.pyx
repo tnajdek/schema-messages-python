@@ -1,9 +1,9 @@
 import struct
 
 def unpack_message(packed, factory):
-	"""
-	Unpack a single message from a bianry string back into an object
-	"""
+    """
+    Unpack a single message from a bianry string back into an object
+    """
     (msg_id, ) = struct.unpack_from(
         factory.id_binary_format,
         packed, 0
@@ -21,9 +21,9 @@ def unpack_message(packed, factory):
 
 
 def unpack_messages(packed, factory):
-	"""
-	Unpack a list of messages from a binary string back into objects
-	"""
+    """
+    Unpack a list of messages from a binary string back into objects
+    """
     messages = []
     offset = 0
     lng = len(packed)
